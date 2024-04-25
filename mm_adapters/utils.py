@@ -44,3 +44,14 @@ def freeze_module(module : torch.nn.Module):
 def unfreeze_module(module : torch.nn.Module):
     for p in module.parameters():
         p.requires_grad = True
+
+def remove_suffixes(s):
+    """
+    Remove common suffixes from huggingface names
+    """
+    s = s.lower()
+    s = s.replace("processor", "")
+    s = s.replace("tokenizer", "")
+    s = s.replace("language", "")
+    s = s.replace("vision", "")
+    return s

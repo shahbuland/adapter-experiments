@@ -11,26 +11,28 @@ from .utils import Modality
 @dataclass
 class MergedProcessorConfig:
     """
-    :param processor_ids: Ids to processors on HF hub
+    :param processor_ids: Name identifiers for models. Can be model ids from hub.
     :param processor_modalities: Modalities for processors
     """
-    processor_ids : List[str]
+    processor_names : List[str]
     processor_modalities : List[Modality]
 
 class MergedProcessorOut:
     pass
 
+
+
 class MergedProcessor:
     """
     Merged processor for multiple modalities
 
+    :param processors: Each individual processor/tokenizer
     :param config: Config for merged processor
     """
-    def __init__(self, config : MergedProcessorConfig):
-        self.processors = [AutoProcessor.from_pretrained(id) for id in config.processor_ids]
-        
+    def __init__(self, processors, config : MergedProcessorConfig):
         # Bit janky but works with HF tokenizers/processors
-        self.processor_names = [type(processor).__name__.lower().replace('processor', '').replace('tokenizer', '') for processor in self.processors]
+        
+        self.processor_names = config.processor_names
         self.modalities = config.processor_modalities
     
     def __call__(

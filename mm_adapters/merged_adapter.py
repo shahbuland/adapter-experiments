@@ -39,6 +39,24 @@ class MergedAdapterConfig:
     })
     final_dim : int = 768
 
+def extract_hidden(name, output, skip_index):
+    """
+    Different models sometimes have different ways to get their hidden states.
+    This deals with that cleanly for us
+
+    :param name: Name identifier for model
+    :param output: Entire output from model (as dict)
+    :param skip_index: Skip last layers (i.e. if skip_index is 2, return 2nd last hidden state)
+    """
+
+    if name == "detr":
+        hidden_states = output.decoder_hidden_states
+    else:
+        hidden_states = output.hidden_states
+
+    return hidden_states[-skip_index]
+
+
 class MergedAdapter(nn.Module):
     """
     Multiple multimodal adapters merged together.
@@ -93,7 +111,7 @@ class MergedAdapter(nn.Module):
 
         adapter_inputs = [processor_out[key] for key in keys]
         # Hidden states from all the adapters
-        model_outs = [adapter(**inputs, output_hidden_states = True).hidden_states[-skip] for (inputs, adapter, skip) in zip(adapter_inputs, self.adapters, self.skips)]
+        model_outs = [extract_hidden(name, adapter(**inputs, output_hidden_states = True), skip) for (inputs, adapter, skip, name) in zip(adapter_inputs, self.adapters, self.skips, self.config.adapter_names)]
         
         if self.config.use_abstractor:
             # Projected to same dim as abstractor, they're all [B, N_i, D] now
