@@ -1,8 +1,5 @@
-from transformers import AutoProcessor
-from transformers.processing_utils import ProcessorMixIn
-
 from dataclasses import dataclass
-from typing import Dict, List, Iterable
+from typing import Dict, List, Iterable, Any
 
 from PIL import Image
 
@@ -20,8 +17,6 @@ class MergedProcessorConfig:
 class MergedProcessorOut:
     pass
 
-
-
 class MergedProcessor:
     """
     Merged processor for multiple modalities
@@ -32,6 +27,7 @@ class MergedProcessor:
     def __init__(self, processors, config : MergedProcessorConfig):
         # Bit janky but works with HF tokenizers/processors
         
+        self.processors = processors
         self.processor_names = config.processor_names
         self.modalities = config.processor_modalities
     

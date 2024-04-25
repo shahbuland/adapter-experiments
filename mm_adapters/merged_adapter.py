@@ -1,12 +1,14 @@
-from typing import List, Union
+from typing import List, Union, Dict
 from dataclasses import dataclass, field
 
 import torch
 from torch import nn
+import einops as eo
 
 from .utils import Modality, freeze_module
 from .nn.blocks import StackedTransformer
 
+@dataclass
 class MergedAdapterConfig:
     """
     Config for merged adapter
@@ -31,7 +33,7 @@ class MergedAdapterConfig:
     use_type_embeddings : bool = False
 
     use_abstractor : bool = False
-    abstractor_kwargs : Dict = field(default_factory = lambda x : {
+    abstractor_kwargs : Dict = field(default_factory = lambda : {
         "n_layers" : 4,
         "n_heads" : 8,
         "dim" : 256,
@@ -50,12 +52,31 @@ def extract_hidden(name, output, skip_index):
     """
 
     if name == "detr":
-        hidden_states = output.decoder_hidden_states
+        hidden_states = output.encoder_hidden_states
     else:
         hidden_states = output.hidden_states
+    hidden_states = hidden_states[-skip_index]
 
-    return hidden_states[-skip_index]
+    if len(hidden_states.shape) > 3: # [B, ...,N, D]
+        hidden_states = hidden_states.flatten(start_dim = 1, end_dim = -2)
 
+    print(hidden_states.shape)
+
+    return hidden_states
+
+def infer_hidden_size(model):
+    # Try a variety of strategies
+    
+    if hasattr(model, 'hidden_size'):
+        return model.hidden_size
+    if hasattr(model, 'config'):
+        if hasattr(model.config, 'hidden_size'):
+            return model.config.hidden_size
+        if hasattr(model.config, 'vision_config'):
+            if hasattr(model.config.vision_config, 'hidden_size'):
+                return model.config.vision_config.hidden_size
+
+    raise ValueError(f"Couldn't figure out {model.__name__} hidden size")
 
 class MergedAdapter(nn.Module):
     """
@@ -65,7 +86,7 @@ class MergedAdapter(nn.Module):
     def __init__(self, adapters, config : MergedAdapterConfig):
         super().__init__()
 
-        self.adapters = nn.ModuleList([adapters])
+        self.adapters = nn.ModuleList(adapters)
         self.config = config
 
         if config.freeze_adapters:
@@ -75,7 +96,7 @@ class MergedAdapter(nn.Module):
         if config.use_abstractor:
             abs_dim = config.abstractor_kwargs['dim']
             self.proj_list = nn.ModuleList(
-                [nn.Linear(adapter.config.hidden_size, abs_dim) for adapter in self.adapters]
+                [nn.Linear(infer_hidden_size(adapter), abs_dim) for adapter in self.adapters]
             )
             self.final_proj = nn.Linear(abs_dim, config.final_dim)
             self.abstractor = StackedTransformer(**config.abstractor_kwargs)
