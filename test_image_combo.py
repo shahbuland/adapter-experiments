@@ -66,6 +66,8 @@ if __name__ == "__main__":
     adapter_out = adapter(
         proc_out
     )
+
+    print(adapter_out.shape)
     # Processing =
 
 
