@@ -4,7 +4,7 @@ import torch
 from enum import Enum
 
 class Modality(Enum):
-    IMAGES = "image"
+    IMAGE = "image"
     AUDIO = "audio"
     TEXT = "text"
     VIDEO = "video"

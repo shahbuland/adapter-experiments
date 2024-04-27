@@ -62,7 +62,7 @@ class MergedProcessor:
 
         for (processor, name, modality) in zip(self.processors, self.processor_names, self.modalities):
             d = processor_kwargs[name] if name in processor_kwargs else {}
-            if modality == Modality.IMAGES:
+            if modality == Modality.IMAGE:
                 inputs = images
             elif modality == Modality.TEXT:
                 inputs = text

@@ -51,7 +51,7 @@ def extract_hidden(name, output, skip_index):
     :param skip_index: Skip last layers (i.e. if skip_index is 2, return 2nd last hidden state)
     """
 
-    if name == "detr":
+    if hasattr(output, 'encoder_hidden_states'):
         hidden_states = output.encoder_hidden_states
     else:
         hidden_states = output.hidden_states
@@ -60,13 +60,13 @@ def extract_hidden(name, output, skip_index):
     if len(hidden_states.shape) > 3: # [B, ...,N, D]
         hidden_states = hidden_states.flatten(start_dim = 1, end_dim = -2)
 
-    print(hidden_states.shape)
-
     return hidden_states
 
 def infer_hidden_size(model):
     # Try a variety of strategies
-    
+
+    if model.__class__.__name__ == "ClapAudioModel":
+        return 16
     if hasattr(model, 'hidden_size'):
         return model.hidden_size
     if hasattr(model, 'config'):
@@ -75,8 +75,14 @@ def infer_hidden_size(model):
         if hasattr(model.config, 'vision_config'):
             if hasattr(model.config.vision_config, 'hidden_size'):
                 return model.config.vision_config.hidden_size
+        if hasattr(model.config, 'audio_config'):
+            if hasattr(model.config.audio_config, 'hidden_size'):
+                return model.config.audio_config.hidden_size
+        if hasattr(model.config, 'encoder'):
+            if hasattr(model.config.encoder, 'hidden_size'):
+                return model.config.encoder.hidden_size
 
-    raise ValueError(f"Couldn't figure out {model.__name__} hidden size")
+    raise ValueError(f"Couldn't figure out {model.__class__.__name__} hidden size")
 
 class MergedAdapter(nn.Module):
     """
@@ -102,7 +108,7 @@ class MergedAdapter(nn.Module):
             self.abstractor = StackedTransformer(**config.abstractor_kwargs)
         else:
             self.proj_list = nn.ModuleList(
-                [nn.Linear(adapter.config.hidden_size, config.final_dim) for adapter in self.adapters]
+                [nn.Linear(infer_hidden_size(adapter), config.final_dim) for adapter in self.adapters]
             )
             self.final_proj = None
 
