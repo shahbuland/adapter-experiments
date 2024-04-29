@@ -127,7 +127,13 @@ class MergedAdapter(nn.Module):
         assert config.adapter_names or config.adapter_modalities, "In adapter config, must provide one of adapter_names or adapter_modalities (none provided)"
         assert not (config.adapter_names and config.adapter_modalities), "In adapter config, must provide ONLY one of adapter_names or adapter_modalities (both provided)"
     
-    def forward(self, processor_out):
+    def forward(self, processor_out, drop_adapters : List[str] = []):
+        """
+        Forward call for merged adapter
+
+        :param processor_out: Direct output from processor
+        :param drop_modalities: Optional parameter. Keys/names for adapters we want to drop. This assumes we aren't using modality keys
+        """
         # If adapter modalitities is true, we use those as keys for the processor output, otherwise we use adapter names as keys
         use_modality_keys = self.config.adapter_modalities is not None
 
@@ -135,6 +141,7 @@ class MergedAdapter(nn.Module):
             keys = [modality.value for modality in Modality]
         else:
             keys = self.config.adapter_names
+            keys = [key for key in keys if key not in drop_adapters]
 
         adapter_inputs = [processor_out[key] for key in keys]
         # Hidden states from all the adapters
