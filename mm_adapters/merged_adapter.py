@@ -55,7 +55,12 @@ def extract_hidden(name, output, skip_index):
         hidden_states = output.encoder_hidden_states
     else:
         hidden_states = output.hidden_states
-    hidden_states = hidden_states[-skip_index]
+    hidden_states = hidden_states[skip_index]
+
+    if name == "clap":
+        # CLAP is weird and reshapes the hidden states internally
+        # We have to reshape them back
+        hidden_states = eo.rearrange(hidden_states, 'b d h w -> b (h w) d')
 
     if len(hidden_states.shape) > 3: # [B, ...,N, D]
         hidden_states = hidden_states.flatten(start_dim = 1, end_dim = -2)
@@ -65,23 +70,25 @@ def extract_hidden(name, output, skip_index):
 def infer_hidden_size(model):
     # Try a variety of strategies
 
-    if model.__class__.__name__ == "ClapAudioModel":
-        return 16
+    res = None
     if hasattr(model, 'hidden_size'):
-        return model.hidden_size
-    if hasattr(model, 'config'):
+        res = model.hidden_size
+    elif hasattr(model, 'config'):
         if hasattr(model.config, 'hidden_size'):
-            return model.config.hidden_size
-        if hasattr(model.config, 'vision_config'):
+            res = model.config.hidden_size
+        elif hasattr(model.config, 'vision_config'):
             if hasattr(model.config.vision_config, 'hidden_size'):
-                return model.config.vision_config.hidden_size
-        if hasattr(model.config, 'audio_config'):
+                res = model.config.vision_config.hidden_size
+        elif hasattr(model.config, 'audio_config'):
             if hasattr(model.config.audio_config, 'hidden_size'):
-                return model.config.audio_config.hidden_size
-        if hasattr(model.config, 'encoder'):
+                res = model.config.audio_config.hidden_size
+        elif hasattr(model.config, 'encoder'):
             if hasattr(model.config.encoder, 'hidden_size'):
-                return model.config.encoder.hidden_size
+                res = model.config.encoder.hidden_size
 
+    if res is not None:
+        return res
+        
     raise ValueError(f"Couldn't figure out {model.__class__.__name__} hidden size")
 
 class MergedAdapter(nn.Module):
@@ -139,14 +146,18 @@ class MergedAdapter(nn.Module):
 
         if use_modality_keys:
             keys = [modality.value for modality in Modality]
+            selected_indices = list(range(len(self.adapters))) # TODO: use_modality_keys probably just overall isn't a good idea
         else:
-            keys = self.config.adapter_names
-            keys = [key for key in keys if key not in drop_adapters]
+            keys = self.config.adapter_names # names
+            selected_indices = [keys.index(key) for key in keys if not key in drop_adapters] # Indices of selected 
 
         adapter_inputs = [processor_out[key] for key in keys]
         # Hidden states from all the adapters
-        model_outs = [extract_hidden(name, adapter(**inputs, output_hidden_states = True), skip) for (inputs, adapter, skip, name) in zip(adapter_inputs, self.adapters, self.skips, self.config.adapter_names)]
-        
+        model_outs = [
+            extract_hidden(keys[idx], self.adapters[idx](**adapter_inputs[idx], output_hidden_states = True), self.skips[idx]) \
+            for idx in selected_indices
+        ]
+
         if self.config.use_abstractor:
             # Projected to same dim as abstractor, they're all [B, N_i, D] now
             projected_out = [proj(model_out) for (proj, model_out) in zip(self.proj_list, model_outs)]
@@ -154,10 +165,10 @@ class MergedAdapter(nn.Module):
             projected_out = [proj(model_out) for (proj, model_out) in zip(self.proj_list, model_outs)]
 
         if self.config.use_type_embeddings:
-            for i in range(len(projected_out)):
+            for i, adapter_idx in enumerate(selected_indices):
                 b, n, d = projected_out[i].shape
-                type_embed = eo.repeat(self.type_embeddings[i], 'd -> b n d', b = b, n = n)
-                projected_out[i] + type_embed
+                type_embed = eo.repeat(self.type_embeddings[adapter_idx], 'd -> b n d', b = b, n = n)
+                projected_out[i] += type_embed
         
         adapters_out = torch.cat(projected_out, dim = 1) # [B, N, D]
         if self.config.use_abstractor:
