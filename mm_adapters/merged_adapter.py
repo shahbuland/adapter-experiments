@@ -6,7 +6,7 @@ from torch import nn
 import einops as eo
 
 from .utils import Modality, freeze_module
-from .nn.blocks import StackedTransformer
+from .nn.pooling import PerceiverPooling
 
 @dataclass
 class MergedAdapterConfig:
@@ -36,8 +36,8 @@ class MergedAdapterConfig:
     abstractor_kwargs : Dict = field(default_factory = lambda : {
         "n_layers" : 4,
         "n_heads" : 8,
-        "dim" : 256,
-        "flash" : False
+        "hidden_size" : 256,
+        "out_seq_len" : 256
     })
     final_dim : int = 768
 
@@ -107,12 +107,12 @@ class MergedAdapter(nn.Module):
                 freeze_module(adapter)
         
         if config.use_abstractor:
-            abs_dim = config.abstractor_kwargs['dim']
+            abs_dim = config.abstractor_kwargs['hidden_size']
             self.proj_list = nn.ModuleList(
                 [nn.Linear(infer_hidden_size(adapter), abs_dim) for adapter in self.adapters]
             )
             self.final_proj = nn.Linear(abs_dim, config.final_dim)
-            self.abstractor = StackedTransformer(**config.abstractor_kwargs)
+            self.abstractor = PerceiverPooling(**config.abstractor_kwargs)
         else:
             self.proj_list = nn.ModuleList(
                 [nn.Linear(infer_hidden_size(adapter), config.final_dim) for adapter in self.adapters]
@@ -121,7 +121,7 @@ class MergedAdapter(nn.Module):
 
         if config.use_type_embeddings:
             n = len(self.adapters)
-            d = config.abstractor_kwargs['dim'] if config.use_abstractor else config.final_dim
+            d = config.abstractor_kwargs['hidden_size'] if config.use_abstractor else config.final_dim
             self.type_embeddings = nn.Parameter(torch.randn(n, d) * 1e-6)
         else:
             self.type_embeddings = None
