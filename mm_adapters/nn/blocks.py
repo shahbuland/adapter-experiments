@@ -13,7 +13,8 @@ class Transformer(nn.Module):
         self.norm1 = nn.LayerNorm(dim)
         self.norm2 = nn.LayerNorm(dim)
 
-        self.qkv = nn.Linear(dim, 3 * dim)
+        self.qkv = nn.Linear(dim, 3 * dim, bias = False)
+        self.out = nn.Linear(dim, dim, bias = False) # project heads together
 
         if flash:
             from flash_attn import flash_attn_qkvpacked_func
@@ -52,6 +53,7 @@ class Transformer(nn.Module):
             attn_out = flash_attn_qkvpacked_func(qkv)
             attn_out = eo.rearrange(attn_out, 'b n h h_d -> b n (h h_d)')
 
+        attn_out = self.out(attn_out)
         x = attn_out + resid_1
         resid_2 = x.clone()
 
