@@ -30,7 +30,7 @@ class MergedAdapterConfig:
     layer_skips : Union[int, List[int]] = -2
     freeze_adapters : bool = True
 
-    use_type_embeddings : bool = False
+    use_type_embeddings : bool = True
 
     use_abstractor : bool = False
     abstractor_kwargs : Dict = field(default_factory = lambda : {

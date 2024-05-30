@@ -12,7 +12,8 @@ class PerceiverAttn(nn.Module):
     def __init__(self, n_heads, hidden_size):
         super().__init__()
 
-        self.qkv = nn.Linear(hidden_size, hidden_size * 3)
+        self.q = nn.Linear(hidden_size, hidden_size)
+        self.kv = nn.Linear(hidden_size, hidden_size * 2)
         self.out = nn.Linear(hidden_size, hidden_size)
 
         self.mlp = MLP(hidden_size)
@@ -34,10 +35,12 @@ class PerceiverAttn(nn.Module):
 
         h = torch.cat([x, latents], dim = 1) # n = h.size(1) = p + k
 
-        qkv = self.qkv(h)
-        qkv = eo.rearrange(qkv, 'b n (h d qkv) -> qkv b n h d', h = self.n_heads, d = self.hidden_size//self.n_heads, qkv = 3)
-        q, k, v = qkv # all [b n h d] now
-        q = q[:,p:] # queries from latents [b n k d]
+        q = self.q(latents)
+        q = eo.rearrange(q, 'b k (h d) -> b k h d', h = self.n_heads, d = self.hidden_size//self.n_heads)
+        kv = self.kv(h)
+        kv = eo.rearrange(kv, 'b n (h d kv) -> kv b n h d', h = self.n_heads, d = self.hidden_size//self.n_heads, kv = 2)
+        k, v = kv # all [b n h d] now
+        #q = q[:,p:] # queries from latents [b n k d]
 
         attn_weights = eo.einsum(q, k, 'b k h d, b n h d -> b h k n') # Attention scores per each head
         attn_weights /= (self.hidden_size//self.n_heads)
@@ -69,7 +72,7 @@ class PerceiverPooling(nn.Module):
     def __init__(self, out_seq_len, n_layers, n_heads, hidden_size):
         super().__init__()
 
-        self.latents = nn.Parameter(torch.ones(out_seq_len, hidden_size))
+        self.latents = nn.Parameter(torch.randn(out_seq_len, hidden_size))
         self.blocks = nn.ModuleList([PerceiverAttn(n_heads, hidden_size)] * n_layers)
         self.postnorm = RMSNorm(hidden_size)
 
